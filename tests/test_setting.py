@@ -1,4 +1,4 @@
-import config.settings as settings_module
+import repomind.config.settings as settings_module
 
 import importlib, os, unittest
 
