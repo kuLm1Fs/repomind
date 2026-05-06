@@ -1,4 +1,4 @@
-from src.repomind.retrieval.chunker import CodeChunk
+from repomind.retrieval.chunker import CodeChunk
 import re
 
 QUERY_EXPANSIONS = {
