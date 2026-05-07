@@ -1,0 +1,57 @@
+{
+  "repo_path": ".",
+  "question": "登录功能是如何实现的？",
+  "retrieved_chunks": [
+    {
+      "chunk": {
+        "path": "src/repomind/retrieval/scorer.py",
+        "start_line": 1,
+        "end_line": 56,
+        "content": "from repomind.retrieval.chunker import CodeChunk\nimport re\n\nQUERY_EXPANSIONS = {\n    \"登录\": [\"login\", \"auth\", \"authenticate\", \"jwt\", \"token\"],\n    \"登陆\": [\"login\", \"auth\", \"authenticate\", \"jwt\", \"token\"],\n    \"认证\": [\"auth\", \"authenticate\", \"authentication\", \"token\", \"jwt\"],\n    \"鉴权\": [\"auth\", \"authorization\", \"permission\", \"token\"],\n    \"用户\": [\"user\", \"account\"],\n    \"接口\": [\"api\", \"controller\", \"route\", \"handler\"],\n    \"配置\": [\"config\", \"settings\", \"env\"],\n    \"数据库\": [\"db\", \"database\", \"sql\", \"model\"],\n}\n\ndef extract_keywords(question: str) -> list[str]:\n    normalized = question.lower()\n\n    keywords : list[str] = []\n\n    # 提取英文代码常见词：login, jwt, auth_service, user123\n    keywords.extend(re.findall(r\"[a-zA-Z_][a-zA-Z0-9_]*\", normalized))\n\n    # 中文问题很难直接和英文代码匹配，所以做少量人工扩展\n    for chinese_word, expanded_words in QUERY_EXPANSIONS.items():\n        if chinese_word in question:\n            keywords.append(chinese_word)\n            keywords.extend(expanded_words)\n\n    # 去重，同时保留顺序\n    seen = set()\n    unique_keywords = []\n    for keyword in keywords:\n        if keyword not in seen:\n            seen.add(keyword)\n            unique_keywords.append(keyword)\n\n    return unique_keywords\n\ndef score_chunk(question: str, chunk: CodeChunk) -> int:\n    keywords = extract_keywords(question)\n\n    content = chunk.content.lower()\n    path = chunk.path.lower()\n\n    score = 0\n\n    for keyword in keywords:\n        normailized_keyword = keyword.lower()\n\n        content_hits = content.count(normailized_keyword)\n        path_hits = path.count(normailized_keyword)\n\n        score += content_hits\n        score += path_hits * 3\n\n    return score"
+      },
+      "score": 25
+    },
+    {
+      "chunk": {
+        "path": "tests/test_scorer.py",
+        "start_line": 1,
+        "end_line": 50,
+        "content": "import unittest\n\nfrom repomind.retrieval.chunker import CodeChunk\nfrom repomind.retrieval.scorer import extract_keywords, score_chunk\n\n\nclass TestScorer(unittest.TestCase):\n    def test_extracts_english_keywords(self):\n        keywords = extract_keywords(\"how does jwt login work\")\n\n        self.assertIn(\"jwt\", keywords)\n        self.assertIn(\"login\", keywords)\n\n    def test_expands_chinese_login_query(self):\n        keywords = extract_keywords(\"登录功能是怎么实现的？\")\n\n        self.assertIn(\"login\", keywords)\n        self.assertIn(\"auth\", keywords)\n        self.assertIn(\"jwt\", keywords)\n\n    def test_scores_content_matches(self):\n        chunk = CodeChunk(\n            path=\"src/service.py\",\n            start_line=1,\n            end_line=3,\n            content=\"def login():\\n    return jwt_token\",\n        )\n\n        score = score_chunk(\"login jwt\", chunk)\n\n        self.assertGreater(score, 0)\n\n    def test_path_match_scores_higher_than_content_match(self):\n        path_chunk = CodeChunk(\n            path=\"src/auth/service.py\",\n            start_line=1,\n            end_line=1,\n            content=\"nothing relevant\",\n        )\n        content_chunk = CodeChunk(\n            path=\"src/service.py\",\n            start_line=1,\n            end_line=1,\n            content=\"auth\",\n        )\n\n        self.assertGreater(\n            score_chunk(\"auth\", path_chunk),\n            score_chunk(\"auth\", content_chunk),\n        )"
+      },
+      "score": 18
+    },
+    {
+      "chunk": {
+        "path": "tests/test_runtime.py",
+        "start_line": 1,
+        "end_line": 80,
+        "content": "import unittest\nfrom pathlib import Path\nfrom tempfile import TemporaryDirectory\nfrom unittest.mock import patch\n\nfrom repomind.runtime.service import ask\n\n\nclass FakeSettings:\n    CHUNK_SIZE = 80\n    CHUNK_OVERLAP = 10\n    TOP_K = 1\n    MAX_RETRY = 1\n\n    def __init__(self, trace_dir):\n        self.TRACE_DIR = trace_dir\n\n\nclass TestRuntime(unittest.TestCase):\n    @patch(\"repomind.runtime.service.generate_answer\")\n    def test_ask_returns_generated_answer_when_evaluation_passes(\n        self,\n        generate_answer_mock,\n    ):\n        generate_answer_mock.return_value = \"\"\"\n涉及文件：\n- auth.py\n\n实现流程：\n1. login 返回 token\n\n证据：\n- auth.py:1-2\n\"\"\"\n\n        with TemporaryDirectory() as tmp:\n            repo = Path(tmp)\n            (repo / \"auth.py\").write_text(\n                \"def login():\\n    return 'token'\\n\",\n                encoding=\"utf-8\",\n            )\n\n            trace_dir = repo / \".traces\"\n            settings = FakeSettings(trace_dir=str(trace_dir))\n\n            answer = ask(str(repo), \"登录功能是如何实现的？\", settings)\n\n            self.assertIn(\"涉及文件\", answer)\n            self.assertEqual(len(list(trace_dir.glob(\"*.json\"))), 1)\n\n        self.assertEqual(generate_answer_mock.call_count, 1)\n\n    @patch(\"repomind.runtime.service.generate_answer\")\n    def test_ask_retries_when_evaluation_fails(self, generate_answer_mock):\n        generate_answer_mock.side_effect = [\n            \"不完整回答\",\n            \"\"\"\n涉及文件：\n- auth.py\n\n实现流程：\n1. login 返回 token\n\n证据：\n- auth.py:1-2\n\"\"\",\n        ]\n\n        with TemporaryDirectory() as tmp:\n            repo = Path(tmp)\n            (repo / \"auth.py\").write_text(\n                \"def login():\\n    return 'token'\\n\",\n                encoding=\"utf-8\",\n            )\n\n            trace_dir = repo / \".traces\"\n            settings = FakeSettings(trace_dir=str(trace_dir))\n\n            answer = ask(str(repo), \"登录功能是如何实现的？\", settings)\n"
+      },
+      "score": 16
+    },
+    {
+      "chunk": {
+        "path": "project.md",
+        "start_line": 1,
+        "end_line": 80,
+        "content": "# RepoMind — Codebase Agent Runtime\n\n## 项目定位\n\n### 一句话介绍\n\n基于 Agent Workflow 的代码库分析 Runtime，支持 Repo Retrieval、Tool Calling、Answer Evaluation 与 Retry Workflow，实现对本地代码仓库的自动分析与上下文理解。\n\n---\n\n# 项目目标\n\n输入：\n\n```bash\nrepomind ask ./demo-repo \"登录功能是怎么实现的？\"\n\n输出：\n\n涉及文件：\n- UserController.java\n- AuthService.java\n- JwtUtil.java\n\n实现流程：\n1. Controller 接收登录请求\n2. Service 校验用户名密码\n3. JwtUtil 生成 JWT\n4. Interceptor 校验 token\n\n证据：\n- UserController.java:23-51\n- AuthService.java:10-43\n核心思想\n\nRepoMind 并不是聊天机器人。\n\n核心问题：\n\n“LLM 如何理解大型代码仓库”\n\n项目重点：\n\nRetrieval Engineering\nContext Engineering\nAgent Workflow\nTool Runtime\nEvaluation & Retry\nRuntime Workflow\nQuestion\n    ↓\nRepo Retrieval\n    ↓\nTool Decision\n    ↓\nTool Execution\n    ↓\nAnswer Generation\n    ↓\nAnswer Evaluation\n    ↓\nRetry / Final Output\n核心模块\n1. Repo Retrieval System\n功能\n\n根据用户问题：\n\n“登录功能怎么实现？”\n\n自动：\n\n检索相关文件\n找到关键函数\n返回相关代码上下文\n文件扫描\n\n支持：\n\nSUPPORTED_EXTENSIONS = {"
+      },
+      "score": 9
+    },
+    {
+      "chunk": {
+        "path": "tests/test_answer_agent.py",
+        "start_line": 1,
+        "end_line": 43,
+        "content": "import unittest\nfrom unittest.mock import patch\n\nfrom repomind.agents.answer_agent import generate_answer\nfrom repomind.retrieval.chunker import CodeChunk\nfrom repomind.retrieval.retriever import RetrievedChunk\n\n\nclass FakeSettings:\n    pass\n\n\nclass TestAnswerAgent(unittest.TestCase):\n    @patch(\"repomind.agents.answer_agent.complete\")\n    def test_generate_answer_uses_retrieved_context(self, complete_mock):\n        complete_mock.return_value = \"涉及文件：\\n- auth.py\"\n\n        retrieved_chunks = [\n            RetrievedChunk(\n                chunk=CodeChunk(\n                    path=\"auth.py\",\n                    start_line=1,\n                    end_line=2,\n                    content=\"def login():\\n    return 'token'\",\n                ),\n                score=3,\n            )\n        ]\n\n        answer = generate_answer(\n            \"登录功能是如何实现的？\",\n            retrieved_chunks,\n            FakeSettings(),\n        )\n\n        self.assertIn(\"auth.py\", answer)\n\n        messages = complete_mock.call_args.args[0]\n        user_message = messages[1][\"content\"]\n\n        self.assertIn(\"登录功能是如何实现的？\", user_message)\n        self.assertIn(\"auth.py\", user_message)\n        self.assertIn(\"def login()\", user_message)"
+      },
+      "score": 9
+    }
+  ],
+  "answer": "根据当前提供的代码上下文，**无法完整回答登录功能的具体实现**。原因如下：\n\n*   上下文中的 `project.md` 仅给出了一个**示例输出**（涉及 `UserController.java`、`AuthService.java`、`JwtUtil.java` 等），但并未包含这些文件的真实代码。\n*   其余文件（`scorer.py`、测试文件）仅涉及**检索评分、关键词扩展和 Agent Workflow 测试**，未包含任何实际的登录逻辑实现（如 `def login()` 或 JWT 生成代码）。\n*   `tests/test_runtime.py` 中 `generate_answer` 返回的模拟答案（\"auth.py\"）也是测试用假数据，不可作为真实实现依据。\n\n**因此，无法提供可靠的：涉及文件、实现流程、证据。**\n\n如果项目中存在实际的登录代码（例如 `auth.py`、`UserController.java` 等），请提供这些文件的内容，我将基于真实代码给出详细分析。",
+  "evaluation": {
+    "passed": true,
+    "reasons": []
+  },
+  "retry_count": 0
+}

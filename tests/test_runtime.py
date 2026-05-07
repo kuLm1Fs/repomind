@@ -12,6 +12,9 @@ class FakeSettings:
     TOP_K = 1
     MAX_RETRY = 1
 
+    def __init__(self, trace_dir):
+        self.TRACE_DIR = trace_dir
+
 
 class TestRuntime(unittest.TestCase):
     @patch("repomind.runtime.service.generate_answer")
@@ -37,9 +40,14 @@ class TestRuntime(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            answer = ask(str(repo), "登录功能是如何实现的？", FakeSettings())
+            trace_dir = repo / ".traces"
+            settings = FakeSettings(trace_dir=str(trace_dir))
 
-        self.assertIn("涉及文件", answer)
+            answer = ask(str(repo), "登录功能是如何实现的？", settings)
+
+            self.assertIn("涉及文件", answer)
+            self.assertEqual(len(list(trace_dir.glob("*.json"))), 1)
+
         self.assertEqual(generate_answer_mock.call_count, 1)
 
     @patch("repomind.runtime.service.generate_answer")
@@ -65,7 +73,12 @@ class TestRuntime(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            answer = ask(str(repo), "登录功能是如何实现的？", FakeSettings())
+            trace_dir = repo / ".traces"
+            settings = FakeSettings(trace_dir=str(trace_dir))
 
-        self.assertIn("涉及文件", answer)
+            answer = ask(str(repo), "登录功能是如何实现的？", settings)
+
+            self.assertIn("涉及文件", answer)
+            self.assertEqual(len(list(trace_dir.glob("*.json"))), 1)
+
         self.assertEqual(generate_answer_mock.call_count, 2)

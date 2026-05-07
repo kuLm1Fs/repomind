@@ -19,5 +19,7 @@ class Settings:
 
     MAX_RETRY = int(os.getenv("MAX_RETRY", 1))
 
+    TRACE_DIR = os.getenv("TRACE_DIR", ".repomind/traces")
+
 
 settings = Settings()
