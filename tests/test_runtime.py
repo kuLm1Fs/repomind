@@ -3,7 +3,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from repomind.runtime import ask
+from repomind.runtime.service import ask
 
 
 class FakeSettings:
@@ -14,7 +14,7 @@ class FakeSettings:
 
 
 class TestRuntime(unittest.TestCase):
-    @patch("repomind.runtime.generate_answer")
+    @patch("repomind.runtime.service.generate_answer")
     def test_ask_returns_generated_answer_when_evaluation_passes(
         self,
         generate_answer_mock,
@@ -42,7 +42,7 @@ class TestRuntime(unittest.TestCase):
         self.assertIn("涉及文件", answer)
         self.assertEqual(generate_answer_mock.call_count, 1)
 
-    @patch("repomind.runtime.generate_answer")
+    @patch("repomind.runtime.service.generate_answer")
     def test_ask_retries_when_evaluation_fails(self, generate_answer_mock):
         generate_answer_mock.side_effect = [
             "不完整回答",

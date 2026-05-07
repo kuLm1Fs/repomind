@@ -2,7 +2,7 @@ import typer
 from rich.console import Console
 
 from repomind.config.settings import settings
-from repomind.runtime import ask as runtime_ask
+from repomind.runtime.service import ask as runtime_ask
 
 app = typer.Typer()
 console = Console()

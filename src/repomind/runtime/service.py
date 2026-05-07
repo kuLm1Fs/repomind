@@ -19,7 +19,7 @@ def ask(repo_path: str, question: str, settings) -> str:
         retrieved_chunks = retrieve(
             question,
             chunks=chunks,
-            top_k=settings.TOP_K,
+            top_k=top_k,
         )
 
         if not retrieved_chunks:
