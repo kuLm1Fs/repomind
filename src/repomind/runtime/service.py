@@ -5,58 +5,59 @@ from repomind.agents.answer_agent import generate_answer
 from repomind.agents.evaluator_agent import evaluate_answer
 from repomind.runtime.trace import save_trace
 from repomind.tools.runtime import run_tools
+from repomind.runtime.state import RuntimeState, state_to_trace_data
+
 
 def ask(repo_path: str, question: str, settings) -> str:
-    trace_data = {
-    "repo_path": repo_path,
-    "question": question,
-    "retrieved_chunks": [],
-    "tool_results": [],
-    "answer": "",
-    "evaluation": None,
-    "retry_count": 0,
-    }
-    files = load_repo(repo_path)
-    chunks = chunk_files(
-        files,
+    state = RuntimeState(
+        repo_path=repo_path,
+        question=question    
+    )
+
+    state.files = load_repo(repo_path)
+    state.chunks = chunk_files(
+        state.files,
         chunk_size=settings.CHUNK_SIZE,
         overlap=settings.CHUNK_OVERLAP,
     )
 
     top_k = settings.TOP_K
     retry_count = 0
-    # 第一版工具结果不用随 retry 变化，retry 只是扩大 `top_k`。所以工具上下文跑一次即可
+
+    # First pass: tool context is independent of retry; retry only expands top_k.
     tool_results = run_tools(repo_path=repo_path, question=question)
-    trace_data["tool_results"] = tool_results
+    state.tool_results = tool_results
 
     while True:
         retrieved_chunks = retrieve(
             question,
-            chunks=chunks,
+            chunks=state.chunks,
             top_k=top_k,
         )
-        trace_data["retrieved_chunks"] = retrieved_chunks
+        state.retrieved_chunks = retrieved_chunks
 
         if not retrieved_chunks:
-            save_trace(settings.TRACE_DIR, trace_data)
+            save_trace(settings.TRACE_DIR, state)
             return "没有找到相关代码片段"
 
-        answer = generate_answer(question, 
-                                 retrieved_chunks, 
-                                 settings,
-                                 tool_results=tool_results)
-        trace_data["answer"] = answer
+        answer = generate_answer(
+            question,
+            state.retrieved_chunks,
+            settings,
+            tool_results=state.tool_results,
+        )
+        state.answer = answer
         evaluation = evaluate_answer(answer)
-        trace_data["evaluation"] = evaluation
+        state.evaluation = evaluation
 
         if evaluation.passed:
-            save_trace(settings.TRACE_DIR, trace_data)
+            save_trace(settings.TRACE_DIR, state_to_trace_data(state))
             return answer
 
         if retry_count >= settings.MAX_RETRY:
-            save_trace(settings.TRACE_DIR, trace_data)
+            save_trace(settings.TRACE_DIR, state_to_trace_data(state))
             return answer
-        
+
         retry_count += 1
-        trace_data["retry_count"] = retry_count
+        state.retry_count = retry_count
         top_k += settings.TOP_K

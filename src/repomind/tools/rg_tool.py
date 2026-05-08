@@ -9,11 +9,17 @@ class RgMatch:
     line_number: int
     line: str
 
+IGNORED_DIRS = {
+    ".git",
+    "node_modules",
+    ".venv",
+    "target",
+    "dist",
+    "__pycache__",
+}
+
 def rg_search(repo_path: str, query: str, limit: int = 20) -> list[RgMatch]:
     if not query.strip():
-        return []
-    
-    if shutil.which("rg") is None:
         return []
     
     root = Path(repo_path)
@@ -23,6 +29,9 @@ def rg_search(repo_path: str, query: str, limit: int = 20) -> list[RgMatch]:
     
     if not root.is_dir():
         raise NotADirectoryError(repo_path)
+    
+    if shutil.which("rg") is None:
+        return python_search(root, query, limit)
     
     completed = subprocess.run(
         [
@@ -70,4 +79,38 @@ def rg_search(repo_path: str, query: str, limit: int = 20) -> list[RgMatch]:
         if len(matches) >= limit:
             break
 
+    return matches
+
+def python_search(root: Path, query: str, limit: int) -> list[RgMatch]:
+    matches: list[RgMatch] = []
+    normalized_query = query.lower()
+
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+
+        if any(part in IGNORED_DIRS for part in path.parts):
+            continue
+
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except UnicodeDecodeError:
+            continue
+
+        for line_number, line in enumerate(lines, start=1):
+            if normalized_query not in line.lower():
+                continue
+
+            relative_path = path.relative_to(root).as_posix()
+
+            matches.append(
+                RgMatch(
+                    path = relative_path,
+                    line_number=line_number,
+                    line=line    
+                )    
+            )
+
+            if len(matches) >= limit:
+                return matches
     return matches

@@ -36,3 +36,18 @@ class TestReadFileTool(unittest.TestCase):
 
             with self.assertRaises(ValueError):
                 read_file_range(str(repo), "auth.py", 3, 2)
+
+    def test_line_range_past_end_is_clamped_to_file_length(self):
+        with TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            (repo / "auth.py").write_text(
+                "line1\nline2\nline3\n",
+                encoding="utf-8",
+            )
+
+            result = read_file_range(str(repo), "auth.py", 2, 20)
+
+            self.assertEqual(result.path, "auth.py")
+            self.assertEqual(result.start_line, 2)
+            self.assertEqual(result.end_line, 3)
+            self.assertEqual(result.content, "line2\nline3")

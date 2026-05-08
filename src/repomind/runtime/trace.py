@@ -4,10 +4,13 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
-def save_trace(trace_dir : str, data: dict) -> Path:
-    Path(trace_dir).mkdir(parents=True, exist_ok= True)
 
-    trace_path = Path(trace_dir) / f"{datetime.now().strftime('%Y%m%d-%H%M%S')} - {uuid4().hex[:8]}.json"
+def save_trace(trace_dir: str, data: dict) -> Path:
+    trace_root = Path(trace_dir)
+    trace_root.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    trace_path = trace_root / f"{timestamp}-{uuid4().hex[:8]}.json"
 
     trace_path.write_text(
         json.dumps(data, ensure_ascii=False, indent=2, default=_json_default),
@@ -16,11 +19,12 @@ def save_trace(trace_dir : str, data: dict) -> Path:
 
     return trace_path
 
+
 def _json_default(value):
     if is_dataclass(value):
         return asdict(value)
-    
+
     if isinstance(value, Path):
         return str(value)
 
-    raise TypeError(f"Object of type {type(value).__name__} is not Json serializable")
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
